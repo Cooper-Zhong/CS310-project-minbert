@@ -57,7 +57,7 @@ class BertSelfAttention(nn.Module):
         attn_val = attn_val.add(attention_mask)
         # apply softmax layer
         attn_val = F.softmax(attn_val, dim=3)
-        # apply dropout to normalized attention scores
+        # apply dropout
         attn_val = self.dropout(attn_val)
         # multiply attention scores to value
         # [bs, num_attention_heads, seq_len, attention_head_size]
@@ -137,6 +137,7 @@ class BertLayer(nn.Module):
         input = output # input: input before feed forward
         output = self.interm_dense(input)
         output = self.interm_af(output) # gelu(Linear(x))
+        # residual
         output = self.add_norm(input, output, self.out_dense, self.out_dropout, self.out_layer_norm)
         return output
 
