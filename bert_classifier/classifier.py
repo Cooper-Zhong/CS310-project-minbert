@@ -45,7 +45,8 @@ class BertSentimentClassifier(torch.nn.Module):
                 param.requires_grad = True
 
         ### TODO
-        raise NotImplementedError
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
+        self.classifier = torch.nn.Linear(config.hidden_size, config.num_labels)
 
 
     def forward(self, input_ids, attention_mask):
@@ -53,8 +54,12 @@ class BertSentimentClassifier(torch.nn.Module):
         # The final BERT contextualized embedding is the hidden state of [CLS] token (the first token).
         # HINT: you should consider what is the appropriate output to return given that
         # the training loop currently uses F.cross_entropy as the loss function.
-        ### TODO
-        raise NotImplementedError
+        ### TODO    
+        pooled_output = self.bert(input_ids=input_ids, attention_mask=attention_mask)['pooler_output']
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        return logits
+        # raise NotImplementedError
 
 
 
@@ -228,7 +233,9 @@ def save_model(model, optimizer, args, config, filepath):
 
 
 def train(args):
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    # device = torch.device('cuda:1') if args.use_gpu else torch.device('cpu')
+    device = torch.device(f'cuda:{args.cuda}') if args.use_gpu else torch.device('cpu')
+
     # Load data
     # Create the data and its corresponding datasets and dataloader
     train_data, num_labels = load_data(args.train, 'train')
@@ -295,7 +302,9 @@ def train(args):
 
 def test(args):
     with torch.no_grad():
-        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        # device = torch.device('cuda:1') if args.use_gpu else torch.device('cpu')
+        device = torch.device(f'cuda:{args.cuda}') if args.use_gpu else torch.device('cpu')
+
         saved = torch.load(args.filepath)
         config = saved['model_config']
         model = BertSentimentClassifier(config)
@@ -341,20 +350,25 @@ def get_args():
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
     parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
                         default=1e-5)
-
+    parser.add_argument("--cuda", type=int, default=1,required=False)
     args = parser.parse_args()
     return args
 
 if __name__ == "__main__":
     args = get_args()
     seed_everything(args.seed)
-    #args.filepath = f'{args.option}-{args.epochs}-{args.lr}.pt'
+    if not os.path.exists('./models'):
+        os.mkdir('./models')
+    if not os.path.exists('./predictions'):
+        os.mkdir('./predictions')
 
+    args.filepath = f'./models/{args.option}-{args.epochs}-{args.lr}.pt'
     print('Training Sentiment Classifier on SST...')
     config = SimpleNamespace(
-        filepath='sst-classifier.pt',
+        filepath=f'./models/epochs{args.epochs}-sst-classifier.pt',
         lr=args.lr,
         use_gpu=args.use_gpu,
+        cuda = args.cuda,
         epochs=args.epochs,
         batch_size=args.batch_size,
         hidden_dropout_prob=args.hidden_dropout_prob,
@@ -373,9 +387,10 @@ if __name__ == "__main__":
 
     print('Training Sentiment Classifier on cfimdb...')
     config = SimpleNamespace(
-        filepath='cfimdb-classifier.pt',
+        filepath=f'./models/epochs{args.epochs}-cfimdb-classifier.pt',
         lr=args.lr,
         use_gpu=args.use_gpu,
+        cuda = args.cuda,
         epochs=args.epochs,
         batch_size=8,
         hidden_dropout_prob=args.hidden_dropout_prob,
