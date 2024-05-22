@@ -11,9 +11,10 @@ to train your model.
 import csv
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, BatchSampler, RandomSampler, SequentialSampler
+import random
 from tokenizer import BertTokenizer
-
+from typing import Any, List, NamedTuple
 
 def preprocess_string(s):
     return ' '.join(s.lower()
@@ -207,6 +208,85 @@ class SentencePairTestDataset(Dataset):
         return batched_data
 
 
+class DatasetInfo(NamedTuple):
+    datasetName: str
+    isPairedDataSet: bool
+    isRegression: bool
+
+DATASET_INFOS = {
+    'similarity': DatasetInfo('similarity', True, True),
+    'paraphrase': DatasetInfo('paraphrase', True, False),
+    'sentiment': DatasetInfo('sentiment', False, False),
+}
+
+class SentenceAllDataset(Dataset):
+    def __init__(self, datasets, args):
+        self.dataset_names = []
+        self.datasets = []
+        for dataset in datasets:
+            dataset_name = dataset[-1][-1]
+            self.dataset_names.append(dataset_name)
+            dataset_info = DATASET_INFOS[dataset_name]
+            if dataset_info.isPairedDataSet:
+                self.datasets.append(SentencePairDataset(dataset, args, dataset_info.isRegression))
+            else:
+                self.datasets.append(SentenceClassificationDataset(dataset, args))
+        self.dataset_lens = [len(dataset) for dataset in self.datasets]
+        self.p = args
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    def __len__(self):
+        return sum(self.lens)
+
+    def __getitem__(self, idx):
+        for i, dataset_len in enumerate(self.dataset_lens):
+            if idx < dataset_len:
+                return self.datasets[i][idx]
+            idx -= dataset_len
+        raise IndexError
+        # datasetId, sampleId = idx
+        # return self.datasets[datasetId][sampleId]
+
+    def collate_fn(self, all_data):
+        dataset_name = all_data[-1][-1]
+        batched_data = self.datasets[self.dataset_names.index(dataset_name)].collate_fn(all_data)
+        batched_data['dataset_name'] = dataset_name
+        return batched_data
+
+
+class BatchSamplerAllDataset(BatchSampler):
+    def __init__(
+        self,
+        datasets,
+        batch_size,
+        shuffle,
+    ):
+        sampler_type = RandomSampler if shuffle else SequentialSampler
+        self.batch_samplers = [
+            BatchSampler(sampler_type(dataset), batch_size, drop_last=False) for dataset in datasets
+        ]
+        self.ordering_list = []
+        for i, batch_sampler in enumerate(self.batch_samplers):
+            self.ordering_list.extend([i] * len(batch_sampler))
+        random.shuffle(self.ordering_list)
+        self.ordering = iter(self.ordering_list)
+        self.len_prefixes = [
+            sum(len(dataset) for dataset in datasets[:i])
+            for i in range(len(self.batch_samplers))
+        ]
+        self.batch_size = batch_size
+    
+    def __iter__(self):
+        for sample_from in self.ordering:
+            result = next(iter(self.batch_samplers[sample_from]))
+            yield [x + self.len_prefixes[sample_from] for x in result]
+        random.shuffle(self.ordering_list)
+        self.ordering = iter(self.ordering_list)
+
+    def __len__(self):
+        return sum(len(batch_sampler) for batch_sampler in self.batch_samplers)
+    
+
 def load_multitask_test_data():
     paraphrase_filename = f'data/quora-test.csv'
     sentiment_filename = f'data/ids-sst-test.txt'
@@ -262,7 +342,7 @@ def load_multitask_data(sentiment_filename,paraphrase_filename,similarity_filena
                 label = int(record['sentiment'].strip())
                 if label not in num_labels:
                     num_labels[label] = len(num_labels)
-                sentiment_data.append((sent, label,sent_id))
+                sentiment_data.append((sent, label,sent_id, 'sentiment'))
 
     print(f"Loaded {len(sentiment_data)} {split} examples from {sentiment_filename}")
 
@@ -282,7 +362,7 @@ def load_multitask_data(sentiment_filename,paraphrase_filename,similarity_filena
                     sent_id = record['id'].lower().strip()
                     paraphrase_data.append((preprocess_string(record['sentence1']),
                                             preprocess_string(record['sentence2']),
-                                            int(float(record['is_duplicate'])),sent_id))
+                                            int(float(record['is_duplicate'])),sent_id, 'paraphrase'))
                 except:
                     pass
 
@@ -302,7 +382,7 @@ def load_multitask_data(sentiment_filename,paraphrase_filename,similarity_filena
                 sent_id = record['id'].lower().strip()
                 similarity_data.append((preprocess_string(record['sentence1']),
                                         preprocess_string(record['sentence2']),
-                                        float(record['similarity']),sent_id))
+                                        float(record['similarity']),sent_id,'similarity'))
 
     print(f"Loaded {len(similarity_data)} {split} examples from {similarity_filename}")
 
