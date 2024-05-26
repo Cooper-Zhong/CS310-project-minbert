@@ -1,0 +1,5 @@
+
+1. Even Batching. Combine all 3 datasets into 1 huge dataset, with random shuffling and sampling in training.
+2. Loss Rescaling. Scale the loss of `paraphrase` data by a factor (0.1/0.2/0.3) so that we still see all of the data from the Quora data in 1 epoch (as opposed to dropping some part of the data), while keeping its effect on the model weights comparable to the other two tasks.
+3. Additional Pretraining. Further pretrain the model using masked language modeling objective (`MLM`) using sentences in the 3 datasets.
+4. Cross-Encoding. Instead of individually processing each input sequence through BERT, the cross-encoding strategy begins by merging each input sequence with a special `[SEP]` token before forward pass. It then directly applies a classification or regression layer on the output embedding to produce a prediction. This has the potential to learn stronger sentence-wise relationships and dependencies, since it considers 2 sentences in a pair simultaneously, harnessing a braoder context.
