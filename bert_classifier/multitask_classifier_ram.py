@@ -13,10 +13,10 @@ from tqdm import tqdm
 from datasets import SentenceClassificationDataset, SentencePairDataset, SentenceAllDataset, BatchSamplerAllDataset,\
     load_multitask_data, load_multitask_test_data
 
-from evaluation import model_eval_sst, test_model_multitask, model_eval_multitask
+from evaluation import test_model_multitask, model_eval_multitask
 
 
-TQDM_DISABLE=False
+TQDM_DISABLE=True
 
 # fix the random seed
 def seed_everything(seed=11711):
@@ -45,11 +45,18 @@ class MultitaskBERT(nn.Module):
         super(MultitaskBERT, self).__init__()
         # You will want to add layers here to perform the downstream tasks.
         # Pretrain mode does not require updating bert paramters.
-        self.bert = BertModel.from_pretrained('bert-base-uncased')
+        if config.load_model_state_dict_from_model_path is not None:
+            self.bert = BertModel.from_pretrained(config.load_model_state_dict_from_model_path)
+            print('loading addtional pretained model')
+        else:
+            self.bert = BertModel.from_pretrained('bert-base-uncased')
+
         for param in self.bert.parameters():
             if config.option == 'pretrain':
                 param.requires_grad = False
             elif config.option == 'finetune':
+                param.requires_grad = True
+            elif config.option == 'finetune_after_additional_pretraining':
                 param.requires_grad = True
         ### TODO
         # self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
@@ -314,14 +321,11 @@ def train_multitask(args):
     # even batching data
     if args.even_batching:
         all_train_datasets = [sst_train_data, para_train_data, sts_train_data]
-        all_dev_datasets = [sst_dev_data, para_dev_data, sts_dev_data]
         
         train_data = SentenceAllDataset(all_train_datasets, args)
         train_batch_sampler = BatchSamplerAllDataset(train_data.datasets, args.batch_size, shuffle = True)
-        dev_data = SentenceAllDataset(all_dev_datasets, args)
-        dev_batch_sampler = BatchSamplerAllDataset(dev_data.datasets, args.batch_size, shuffle = False)
         train_dataloader = DataLoader(train_data, collate_fn = train_data.collate_fn, batch_sampler = train_batch_sampler)
-        dev_dataloader = DataLoader(dev_data, collate_fn = dev_data.collate_fn, batch_sampler = dev_batch_sampler)
+
         # test the dataloader
         '''
         for epoch in range(args.epochs):
@@ -365,6 +369,7 @@ def train_multitask(args):
               'data_dir': '.',
               'task_embedding_size': 128,
               'task_dropout_prob': 0.3,
+              'load_model_state_dict_from_model_path': args.load_model_state_dict_from_model_path if args.option == 'finetune_after_additional_pretraining' else None,
               'option': args.option}
 
     config = SimpleNamespace(**config)
@@ -377,6 +382,12 @@ def train_multitask(args):
     best_dev_acc = 0
 
     debug = args.debug
+    print('start training...')
+    # if debug and args.load_model_state_dict_from_model_path is not None:
+    #     print('trying to save pretrained model')
+    #     save_model(model, optimizer, args, config, args.filepath)
+    #     print('successfully')
+
     # Run for the specified number of epochs
     for epoch in range(args.epochs):
         model.train()
@@ -425,9 +436,9 @@ def train_multitask(args):
 
         new_df = pd.DataFrame(data, index=[0])
         df = pd.concat([df, new_df], ignore_index=True)
-        df.to_csv(f'even_batch-rescale-multitask_results.csv', index = False)
+        df.to_csv(f'./results/pretrain-even_batch-rescale0.3-multitask_results.csv', index = False)
 
-    df.to_csv(f'even_batch-rescale-multitask_results.csv', index = False)
+    df.to_csv(f'./results/pretrain-even_batch-rescale0.3-multitask_results.csv', index = False)
 
        
 
@@ -465,8 +476,8 @@ def get_args():
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--option", type=str,
-                        help='pretrain: the BERT parameters are frozen; finetune: BERT parameters are updated',
-                        choices=('pretrain', 'finetune'), default="pretrain")
+                        help='pretrain: the BERT parameters are frozen; finetune: BERT parameters are updated, finetune_after_additional_pretraining: first pretrain on training sentence, then fintune',
+                        choices=('pretrain', 'finetune', 'finetune_after_additional_pretraining'), default="pretrain")
     parser.add_argument("--use_gpu", action='store_true')
 
     parser.add_argument("--sst_dev_out", type=str, default="predictions/sst-dev-output.csv")
@@ -488,12 +499,19 @@ def get_args():
     parser.add_argument("--debug", action='store_true')
     parser.add_argument("--even_batching", action='store_true')
     parser.add_argument("--grad_scaling_factor_for_para", type=float, default=1.0)
+    parser.add_argument(
+        "--load_model_state_dict_from_model_path",
+        type=str,
+        help='Only loads model state dict; does NOT load optimizer state, config, etc.; only for finetune after pretrain'
+    )
     args = parser.parse_args()
     return args
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = f'./models/ram-even_batch-rescale-{args.option}-{args.epochs}-{args.lr}-multitask.pt' # save path
+    if args.option == 'finetune_after_additional_pretraining':
+        assert(args.load_model_state_dict_from_model_path is not None)
+    args.filepath = f'./models/ram-pretrain_even_batch-rescale0.3-{args.option}-{args.epochs}-{args.lr}-multitask.pt' # save path
     seed_everything(args.seed)  # fix the seed for reproducibility
     train_multitask(args)
     test_model(args)
