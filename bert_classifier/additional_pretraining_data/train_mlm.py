@@ -40,11 +40,11 @@ do_whole_word_mask = True  # If set to true, whole words are masked
 mlm_prob = 0.15  # Probability that a word is replaced by a [MASK] token
 
 # Load the model
-model = AutoModelForMaskedLM.from_pretrained(model_name)
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForMaskedLM.from_pretrained('bert-base-uncased')
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 
 
-output_dir = "pretrained_{}".format(model_name.replace("/", "_"))
+output_dir = "pretrained_{}".format('bert-base-uncased'.replace("/", "_"))
 print("Save checkpoints to:", output_dir)
 
 
