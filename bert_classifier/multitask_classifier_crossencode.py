@@ -105,7 +105,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         emb = self.forward(b_ids_combined, b_attention_mask_combined)
-        # emb = self.paraphrase_dropout(emb)
+        emb = self.paraphrase_dropout(emb)
         output = self.paraphrase_linear(emb)
         logits = output.view(-1)
         return logits
@@ -118,7 +118,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         emb = self.forward(b_ids_combined, b_attention_mask_combined)
-        # emb = self.paraphrase_dropout(emb)
+        emb = self.similarity_dropout(emb)
         output = self.similarity_linear(emb)
         logits = output.view(-1)
         logits = torch.sigmoid(logits) * 5.0
@@ -287,7 +287,9 @@ def single_epoch_train_all(
 
 ## Currently only trains on sst dataset
 def train_multitask(args):
-    device = torch.device(f'cuda:{args.cuda}') if args.use_gpu else torch.device('cpu')
+    # device = torch.device(f'cuda:{args.cuda}') if args.use_gpu else torch.device('cpu')
+    device = torch.device(f'cuda') if args.use_gpu else torch.device('cpu')
+
     # create a dataframe for training outcomes for each epoch (requires the pandas and openpyxl packages)
     df = pd.DataFrame(columns = ['epoch', 'train_acc_sst', 'train_acc_para', 'train_acc_sts', 'train_acc', \
                              'dev_acc_sst', 'dev_acc_para', 'dev_acc_sts', 'dev_acc'])
@@ -432,9 +434,9 @@ def train_multitask(args):
 
         new_df = pd.DataFrame(data, index=[0])
         df = pd.concat([df, new_df], ignore_index=True)
-        df.to_csv(f'./results/pretrain-even_batch-rescale0.1-cross-nodrop-multitask_results.csv', index = False)
+        df.to_csv(f'./results/pretrain-even_batch-cross-alldrop-batch32-multitask_results.csv', index = False)
 
-    df.to_csv(f'./results/pretrain-even_batch-rescale0.1-cross-nodrop-multitask_results.csv', index = False)
+    df.to_csv(f'./results/pretrain-even_batch-cross-alldrop-batch32-multitask_results.csv', index = False)
 
        
 
@@ -442,8 +444,9 @@ def train_multitask(args):
 
 def test_model(args):
     with torch.no_grad():
-        # device = torch.device('cuda:1') if args.use_gpu else torch.device('cpu')
-        device = torch.device(f'cuda:{args.cuda}') if args.use_gpu else torch.device('cpu')
+        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        # device = torch.device(f'cuda:{args.cuda}') if args.cuda else torch.device('cpu')
+
         saved = torch.load(args.filepath)
         config = saved['model_config']
 
@@ -508,7 +511,7 @@ if __name__ == "__main__":
     args = get_args()
     if args.option == 'finetune_after_additional_pretraining':
         assert(args.load_model_state_dict_from_model_path is not None)
-    args.filepath = f'./models/ram-pretrain_even_batch-rescale0.1-cross-nodrop-{args.option}-{args.epochs}-{args.lr}-multitask.pt' # save path
+    args.filepath = f'./models/ram-pretrain_even_batch-cross-alldrop-batch32-{args.option}-{args.epochs}-{args.lr}-multitask.pt' # save path
     seed_everything(args.seed)  # fix the seed for reproducibility
     train_multitask(args)
     test_model(args)
