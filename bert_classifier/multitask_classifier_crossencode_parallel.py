@@ -14,7 +14,7 @@ from datasets import SentenceClassificationDataset, SentencePairDataset, Sentenc
     load_multitask_data, load_multitask_test_data
 from cross_dataset import SentenceAllConcatDataset, BatchSamplerAllConcatDataset, SentencePairConcatDataset, SentencePairTestConcatDataset
 
-from evaluation import model_eval_sst, test_model_multitask, model_eval_multitask, model_eval_multitask_cross,test_model_multitask_cross
+from evaluation_parallel import model_eval_sst, test_model_multitask, model_eval_multitask, model_eval_multitask_cross,test_model_multitask_cross
 
 
 TQDM_DISABLE=True
@@ -51,7 +51,9 @@ class MultitaskBERT(nn.Module):
             print('loading addtional pretained model')
         else:
             self.bert = BertModel.from_pretrained('bert-base-uncased')
-
+        # parallel
+        self.bert = torch.nn.DataParallel(self.bert)
+        
         for param in self.bert.parameters():
             if config.option == 'pretrain':
                 param.requires_grad = False
@@ -92,7 +94,7 @@ class MultitaskBERT(nn.Module):
         '''
         ### TODO
         output = self.forward(input_ids, attention_mask)
-        # output = self.sentiment_dropout(output) # dropout added
+        output = self.sentiment_dropout(output) # dropout added
         sentiment_logits = self.sentiment_linear(output)
         return sentiment_logits
 
@@ -154,7 +156,8 @@ def single_batch_train_sts(batch, model: MultitaskBERT, optimizer, device, debug
     b_attention_mask_combined = b_attention_mask_combined.to(device)
     b_labels = b_labels.to(device)
     optimizer.zero_grad()
-    predictions = model.predict_similarity(b_ids_combined, b_attention_mask_combined)
+    # predictions = model.predict_similarity(b_ids_combined, b_attention_mask_combined)
+    predictions = model.module.predict_similarity(b_ids_combined, b_attention_mask_combined)
 
     # C = sum(np.exp(np.arange(1, 5))) # TODO fix bug here
     loss = F.mse_loss(predictions, b_labels.view(-1).float(), reduction='sum') / args.batch_size
@@ -203,7 +206,8 @@ def single_batch_train_para(batch, model: MultitaskBERT, optimizer, device, grad
     b_mask_combined = b_mask_combined.to(device)
     b_labels = b_labels.to(device)
     optimizer.zero_grad()
-    logits = model.predict_paraphrase(b_ids_combined, b_mask_combined)
+    # logits = model.predict_paraphrase(b_ids_combined, b_mask_combined)
+    logits = model.module.predict_paraphrase(b_ids_combined, b_mask_combined)
 
     # multi_negatives_ranking_loss = torch.sum((b_labels == 1) * multi_negatives_ranking_loss) / torch.sum(b_labels == 1)
     loss = F.binary_cross_entropy_with_logits(logits, b_labels.view(-1).float(), reduction='sum') / args.batch_size
@@ -226,7 +230,8 @@ def single_batch_train_sst(batch, model: MultitaskBERT, optimizer, device, debug
         b_labels = b_labels.to(device)
 
         optimizer.zero_grad()
-        logits = model.predict_sentiment(b_ids, b_mask)
+        # logits = model.predict_sentiment(b_ids, b_mask)
+        logits = model.module.predict_sentiment(b_ids, b_mask)
         if debug:
             print("sst", logits[:5, :], b_labels[:5])
         loss = F.cross_entropy(logits, b_labels.view(-1), reduction='sum') / args.batch_size
@@ -289,6 +294,10 @@ def single_epoch_train_all(
 def train_multitask(args):
     # device = torch.device(f'cuda:{args.cuda}') if args.use_gpu else torch.device('cpu')
     device = torch.device(f'cuda') if args.use_gpu else torch.device('cpu')
+    # configure gpu for each process
+    # local_rank = torch.distributed.get_rank()
+    # torch.cuda.set_device(local_rank)
+    # device = torch.device("cuda", local_rank)
 
     # create a dataframe for training outcomes for each epoch (requires the pandas and openpyxl packages)
     df = pd.DataFrame(columns = ['epoch', 'train_acc_sst', 'train_acc_para', 'train_acc_sts', 'train_acc', \
@@ -371,8 +380,9 @@ def train_multitask(args):
     #     print("Old config was", saved['model_config'])
     #     print("New config is", model.config)
 
-
+    # multi gpu training
     model = model.to(device)
+    model = torch.nn.DataParallel(model,device_ids=[0,1], output_device=1)
 
     lr = args.lr
     optimizer = AdamW(model.parameters(), lr=lr)
@@ -434,9 +444,9 @@ def train_multitask(args):
 
         new_df = pd.DataFrame(data, index=[0])
         df = pd.concat([df, new_df], ignore_index=True)
-        df.to_csv(f'./results/pretrain-even_batch-cross-alldrop-batch32-multitask_results.csv', index = False)
+        df.to_csv(f'./results/pretrain-even_batch-cross-alldrop-batch64-rtx-multitask_results.csv', index = False)
 
-    df.to_csv(f'./results/pretrain-even_batch-cross-alldrop-batch32-multitask_results.csv', index = False)
+    df.to_csv(f'./results/pretrain-even_batch-cross-alldrop-batch64-rtx-multitask_results.csv', index = False)
 
        
 
@@ -447,12 +457,18 @@ def test_model(args):
         device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
         # device = torch.device(f'cuda:{args.cuda}') if args.cuda else torch.device('cpu')
 
+        # local_rank = torch.distributed.get_rank()
+        # torch.cuda.set_device(local_rank)
+        # device = torch.device("cuda", local_rank)
+
         saved = torch.load(args.filepath)
         config = saved['model_config']
 
         model = MultitaskBERT(config)
         model.load_state_dict(saved['model'])
         model = model.to(device)
+        model = torch.nn.DataParallel(model,device_ids=[0,1], output_device=1)
+        
         print(f"Loaded model to test from {args.filepath}")
 
         test_model_multitask_cross(args, model, device)
@@ -511,8 +527,8 @@ if __name__ == "__main__":
     args = get_args()
     if args.option == 'finetune_after_additional_pretraining':
         assert(args.load_model_state_dict_from_model_path is not None)
-    args.filepath = f'./models/ram-pretrain_even_batch-cross-alldrop-batch32-{args.option}-{args.epochs}-{args.lr}-multitask.pt' # save path
-    seed_everything(args.seed)  # fix the seed for reproducibility
+    args.filepath = f'./models/ram-pretrain_even_batch-cross-alldrop-batch64-rtx-{args.option}-{args.epochs}-{args.lr}-multitask.pt' # save path
+    seed_everything(args.seed)  # fix the seed for reproducibility``
     train_multitask(args)
     test_model(args)
 

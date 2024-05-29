@@ -71,7 +71,7 @@ If not specially stated, training are done using a batch size of 8, with dropout
             output = torch.mul(output_1, output_2)
             similarity_logits = self.similarity_linear_interact(output)
             return similarity_logits
-```
+    ```
 
 - `multitask-sequential-ram-struct`: sequential training + structure in `multitask_classifier_ram.py`
   ```python
@@ -122,7 +122,7 @@ If not specially stated, training are done using a batch size of 8, with dropout
         output_2 = self.similarity_linear(emb_2)
         logits = F.cosine_similarity(output_1, output_2) * 5.0
         return logits
-```
+    ```
 
 ### Even batching and loss rescaling
 
