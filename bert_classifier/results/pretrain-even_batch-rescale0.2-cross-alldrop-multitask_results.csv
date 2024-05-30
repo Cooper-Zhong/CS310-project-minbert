@@ -1,0 +1,11 @@
+epoch,train_acc_sst,train_acc_para,train_acc_sts,train_acc,dev_acc_sst,dev_acc_para,dev_acc_sts,dev_acc
+0,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.49318801089918257,0.8590936077577677,0.8623009553523953,0.7381941913364485
+1,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.4868301544050863,0.8728972887393628,0.8808344912803359,0.746853978141595
+2,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.49682107175295187,0.8819513160498713,0.8840740207637074,0.7542821361888435
+3,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.49227974568574023,0.8850682762715218,0.8834864719359553,0.7536114979644059
+4,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.4895549500454133,0.8856619829804077,0.8889571607058222,0.7547246979105479
+5,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.4868301544050863,0.8853651296259648,0.8843931920036683,0.7521961586782399
+6,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.4750227066303361,0.8875915297842866,0.8856694996896272,0.7494279120347499
+7,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.48864668483197093,0.886651494161884,0.8882261095804226,0.7545080961914259
+8,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.4732061762034514,0.8874431031070651,0.8824929664772739,0.7477140819292635
+9,skip to save time ,skip to save time ,skip to save time ,skip to save time ,0.46503178928247046,0.8845240451217099,0.8830348447675064,0.744196893057229
