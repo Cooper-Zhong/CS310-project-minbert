@@ -1,4 +1,6 @@
-# CS 224N Default Final Project - Multitask BERT
+# CS310 Default Final Project - Multitask BERT
+
+**From CS 224N** 
 
 This is the starting code for the default final project for the Stanford CS 224N class. You can find the handout [here](https://web.stanford.edu/class/cs224n/project/default-final-project-bert-handout.pdf)
 
